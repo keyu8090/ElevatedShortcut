@@ -1,43 +1,99 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Elevated Shortcut</title>
+    <title>SkipUAC</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
   <body>
     <div class="app" id="app">
       <header class="topbar" id="topbar">
-        <div class="title">
-          <div class="hint">
-            拖拽开始菜单/桌面快捷方式（.lnk）到窗口任意位置添加（自动生成桌面 elevated
-            快捷方式）
+        <div class="topbar-row topbar-row-main">
+          <div class="toolbar-left">
+            <div class="toolbar-group toolbar-group-actions" aria-label="Actions">
+              <button class="top-btn top-btn-wide" id="btn-add" type="button">Add</button>
+              <button class="top-btn top-btn-wide" id="btn-install" type="button">Create</button>
+            </div>
+
+            <div class="toolbar-gap" aria-hidden="true"></div>
+
+            <div class="toolbar-group toolbar-group-view" aria-label="View">
+              <button class="top-dd-btn" id="btn-view" type="button" aria-haspopup="menu" aria-expanded="false">
+                <span class="top-dd-text" id="view-label">View</span>
+                <span class="top-dd-caret" aria-hidden="true">⌵</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="view-toggle" role="toolbar" aria-label="View mode">
-          <button class="top-btn" id="btn-add" title="选择文件添加">添加</button>
-          <button class="top-btn" id="btn-install" title="为选中项创建计划任务和桌面快捷方式">创建</button>
-          <button class="seg-btn" data-view="large" title="大图标">大</button>
-          <button class="seg-btn" data-view="small" title="小图标">小</button>
-          <button class="seg-btn" data-view="list" title="列表">列</button>
-          <button class="seg-btn" data-view="details" title="详细信息">详</button>
+
+          <div class="toolbar-right">
+            <button class="icon-btn" id="btn-more" type="button" aria-label="More" aria-haspopup="menu" aria-expanded="false">⋯</button>
+          </div>
         </div>
       </header>
 
       <main class="content" id="content" tabindex="0"></main>
 
+      <footer class="statusbar" id="statusbar">
+        <div class="statusbar-text" id="status-text">Ready</div>
+      </footer>
+
       <div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions"></div>
 
+      <div class="menu hidden" id="view-menu" role="menu" aria-hidden="true">
+        <button class="menu-item" data-view="large" type="button" role="menuitem">Large</button>
+        <button class="menu-item" data-view="small" type="button" role="menuitem">Small</button>
+        <button class="menu-item" data-view="list" type="button" role="menuitem">List</button>
+        <button class="menu-item" data-view="details" type="button" role="menuitem">Details</button>
+      </div>
+
+      <div class="menu hidden" id="more-menu" role="menu" aria-hidden="true">
+        <button class="menu-item" id="more-settings" type="button" role="menuitem">Settings</button>
+      </div>
+
       <div class="ctx hidden" id="context-menu" role="menu" aria-hidden="true">
-        <button class="ctx-item" id="ctx-run" role="menuitem">立即启动（高权限）</button>
-        <button class="ctx-item" id="ctx-open" role="menuitem">打开文件所在位置</button>
+        <button class="ctx-item" id="ctx-run" type="button" role="menuitem">Run elevated</button>
+        <button class="ctx-item" id="ctx-open" type="button" role="menuitem">Open file location</button>
         <div class="ctx-sep"></div>
-        <button class="ctx-item danger" id="ctx-del" role="menuitem">
-          删除（同时移除桌面快捷方式/任务）
-        </button>
+        <button class="ctx-item danger" id="ctx-del" type="button" role="menuitem">Delete</button>
+      </div>
+
+      <div class="modal hidden" id="settings-modal" aria-hidden="true">
+        <div class="modal-backdrop" id="settings-backdrop"></div>
+        <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+          <div class="modal-head">
+            <div>
+              <div class="modal-title" id="settings-title">Settings</div>
+              <div class="modal-subtitle" id="settings-subtitle">Choose language and theme.</div>
+            </div>
+            <button class="modal-close" id="btn-settings-close" type="button" aria-label="Close">×</button>
+          </div>
+
+          <div class="settings-list">
+            <label class="setting-row" for="language-select">
+              <span class="setting-label" id="settings-language-label">Language</span>
+              <select class="setting-select" id="language-select">
+                <option value="zh-CN">简体中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+
+            <label class="setting-row" for="theme-select">
+              <span class="setting-label" id="settings-theme-label">Theme</span>
+              <select class="setting-select" id="theme-select">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+
+            <label class="setting-row setting-row-inline" for="startup-toggle">
+              <span class="setting-label" id="settings-startup-label">Run at startup</span>
+              <input class="setting-switch" id="startup-toggle" type="checkbox" role="switch" />
+            </label>
+          </div>
+        </section>
       </div>
     </div>
   </body>

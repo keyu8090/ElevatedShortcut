@@ -6,12 +6,15 @@ mod storage;
 mod tasks;
 mod util;
 mod win_shortcut;
+mod autostart;
 
 use std::{path::PathBuf, time::SystemTime};
 
 use base64::Engine;
 use model::ProgramEntry;
 use tauri::Manager;
+
+const AUTOSTART_VALUE_NAME: &str = "SkipUAC";
 
 fn icon_data_url(icon_path: &str) -> Option<String> {
     let bytes = std::fs::read(icon_path).ok()?;
@@ -441,6 +444,20 @@ fn remove_program(app: tauri::AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_autostart_enabled() -> Result<bool, String> {
+    autostart::is_enabled(AUTOSTART_VALUE_NAME)
+}
+
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("resolve current exe failed: {e}"))?;
+    let exe_str = exe.to_string_lossy();
+    // Always quote paths since they may contain spaces.
+    let cmd = format!("\"{}\"", exe_str);
+    autostart::set_enabled(AUTOSTART_VALUE_NAME, enabled, &cmd)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -453,7 +470,9 @@ pub fn run() {
             install_programs,
             run_program,
             open_program_location,
-            remove_program
+            remove_program,
+            get_autostart_enabled,
+            set_autostart_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
