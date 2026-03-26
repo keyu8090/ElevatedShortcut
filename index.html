@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Elevated Shortcut</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div class="app" id="app">
+      <header class="topbar" id="topbar">
+        <div class="title">
+          <div class="hint">
+            拖拽开始菜单/桌面快捷方式（.lnk）到窗口任意位置添加（自动生成桌面 elevated
+            快捷方式）
+          </div>
+        </div>
+        <div class="view-toggle" role="toolbar" aria-label="View mode">
+          <button class="top-btn" id="btn-add" title="选择文件添加">添加</button>
+          <button class="top-btn" id="btn-install" title="为选中项创建计划任务和桌面快捷方式">创建</button>
+          <button class="seg-btn" data-view="large" title="大图标">大</button>
+          <button class="seg-btn" data-view="small" title="小图标">小</button>
+          <button class="seg-btn" data-view="list" title="列表">列</button>
+          <button class="seg-btn" data-view="details" title="详细信息">详</button>
+        </div>
+      </header>
+
+      <main class="content" id="content" tabindex="0"></main>
+
+      <div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions"></div>
+
+      <div class="ctx hidden" id="context-menu" role="menu" aria-hidden="true">
+        <button class="ctx-item" id="ctx-run" role="menuitem">立即启动（高权限）</button>
+        <button class="ctx-item" id="ctx-open" role="menuitem">打开文件所在位置</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item danger" id="ctx-del" role="menuitem">
+          删除（同时移除桌面快捷方式/任务）
+        </button>
+      </div>
+    </div>
+  </body>
+</html>
