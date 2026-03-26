@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type ViewMode = "large" | "small" | "list" | "details";
 type ThemeMode = "light" | "dark";
@@ -149,7 +150,9 @@ const els = {
     Array.from(document.querySelectorAll<HTMLButtonElement>("#sort-menu .menu-item[data-sort-dir]")),
   moreBtn: () => document.querySelector<HTMLButtonElement>("#btn-more")!,
   moreMenu: () => document.querySelector<HTMLElement>("#more-menu")!,
+  morePin: () => document.querySelector<HTMLButtonElement>("#more-pin")!,
   moreSettings: () => document.querySelector<HTMLButtonElement>("#more-settings")!,
+  moreAbout: () => document.querySelector<HTMLButtonElement>("#more-about")!,
   ctx: () => document.querySelector<HTMLElement>("#context-menu")!,
   ctxRun: () => document.querySelector<HTMLButtonElement>("#ctx-run")!,
   ctxOpen: () => document.querySelector<HTMLButtonElement>("#ctx-open")!,
@@ -168,6 +171,10 @@ const els = {
   themeSelect: () => document.querySelector<HTMLSelectElement>("#theme-select")!,
   startupToggle: () => document.querySelector<HTMLInputElement>("#startup-toggle")!,
   statusText: () => document.querySelector<HTMLElement>("#status-text")!,
+  aboutModal: () => document.querySelector<HTMLElement>("#about-modal")!,
+  aboutBackdrop: () => document.querySelector<HTMLElement>("#about-backdrop")!,
+  aboutClose: () => document.querySelector<HTMLButtonElement>("#btn-about-close")!,
+  aboutUacLink: () => document.querySelector<HTMLButtonElement>("#about-uac-link")!,
 };
 
 let programs: ProgramEntry[] = [];
@@ -182,7 +189,12 @@ let primaryAction: "install" | "delete" = "install";
 let autostartEnabled: boolean | null = null;
 let dragProgramId: string | null = null;
 let suppressNextItemClick = false;
+let alwaysOnTop = false;
 let dragOverlayEl: HTMLElement | null = null;
+const UAC_DOC_URLS: Record<Locale, string> = {
+  "zh-CN": "https://learn.microsoft.com/zh-cn/windows/security/identity-protection/user-account-control/user-account-control-overview",
+  en: "https://learn.microsoft.com/windows/security/identity-protection/user-account-control/user-account-control-overview",
+};
 
 function ensureDragOverlay(p: ProgramEntry) {
   if (!dragOverlayEl) {
@@ -265,6 +277,22 @@ function getSavedLocale(): Locale {
   return raw === "en" ? "en" : "zh-CN";
 }
 
+function getSavedAlwaysOnTop(): boolean {
+  return localStorage.getItem("alwaysOnTop") === "1";
+}
+
+async function setAlwaysOnTop(next: boolean) {
+  alwaysOnTop = next;
+  localStorage.setItem("alwaysOnTop", next ? "1" : "0");
+  try {
+    await invoke("set_window_always_on_top", { enabled: next });
+  } catch (e) {
+    const msg = typeof e === "string" ? e : (e as { toString?: () => string })?.toString?.() ?? "unknown error";
+    toast(locale === "zh-CN" ? "\u7f6e\u9876\u5931\u8d25" : "Always on top failed", msg, "error");
+  }
+  updateMorePinLabel();
+}
+
 function setTheme(mode: ThemeMode) {
   themeMode = mode;
   localStorage.setItem("themeMode", mode);
@@ -272,11 +300,19 @@ function setTheme(mode: ThemeMode) {
   els.themeSelect().value = mode;
 }
 
+function updateMorePinLabel() {
+  const check = alwaysOnTop ? " \u2713" : "";
+  els.morePin().textContent = (locale === "zh-CN" ? "\u7f6e\u9876" : "Always on top") + check;
+  els.morePin().classList.toggle("active", alwaysOnTop);
+}
+
 function applyLocaleText() {
   document.documentElement.lang = locale;
   document.title = "SkipUAC";
   els.addBtn().textContent = t("add");
   els.moreSettings().textContent = t("settings");
+  els.moreAbout().textContent = locale === "zh-CN" ? "\u5173\u4e8e" : "About";
+  updateMorePinLabel();
   els.ctxRun().textContent = t("runElevated");
   els.ctxOpen().textContent = t("openLocation");
   els.ctxDel().textContent = t("deleteInstalled");
@@ -611,6 +647,16 @@ function closeSettings() {
   els.settingsModal().setAttribute("aria-hidden", "true");
 }
 
+function openAbout() {
+  els.aboutModal().classList.remove("hidden");
+  els.aboutModal().setAttribute("aria-hidden", "false");
+}
+
+function closeAbout() {
+  els.aboutModal().classList.add("hidden");
+  els.aboutModal().setAttribute("aria-hidden", "true");
+}
+
 function setSelectionOnly(id: string) {
   selectedIds = new Set([id]);
   updateInstallButton();
@@ -935,12 +981,14 @@ async function main() {
   viewMode = getSavedViewMode();
   sortRule = getSavedSortRule();
   sortDir = getSavedSortDir();
+  alwaysOnTop = getSavedAlwaysOnTop();
 
   setTheme(themeMode);
   els.languageSelect().value = locale;
   applyLocaleText();
   setViewMode(viewMode);
   updateSortLabel();
+  await setAlwaysOnTop(alwaysOnTop);
   await refreshPrograms();
 
   let suppressNextBlankClick = false;
@@ -1158,8 +1206,36 @@ async function main() {
     hideMoreMenu();
     openSettings();
   });
+  els.moreAbout().addEventListener("click", () => {
+    hideMoreMenu();
+    openAbout();
+  });
+  els.morePin().addEventListener("click", async () => {
+    hideMoreMenu();
+    await setAlwaysOnTop(!alwaysOnTop);
+    toast(
+      locale === "zh-CN" ? "\u7f6e\u9876" : "Always on top",
+      alwaysOnTop
+        ? locale === "zh-CN"
+          ? "\u5df2\u5f00\u542f"
+          : "Enabled"
+        : locale === "zh-CN"
+          ? "\u5df2\u5173\u95ed"
+          : "Disabled"
+    );
+  });
   els.settingsClose().addEventListener("click", closeSettings);
   els.settingsBackdrop().addEventListener("click", closeSettings);
+  els.aboutClose().addEventListener("click", closeAbout);
+  els.aboutBackdrop().addEventListener("click", closeAbout);
+  els.aboutUacLink().addEventListener("click", async () => {
+    try {
+      await openUrl(UAC_DOC_URLS[locale]);
+    } catch (e) {
+      const msg = typeof e === "string" ? e : (e as { toString?: () => string })?.toString?.() ?? "unknown error";
+      toast(locale === "zh-CN" ? "打开失败" : "Open failed", msg, "error");
+    }
+  });
   els.languageSelect().addEventListener("change", () => setLocale(els.languageSelect().value as Locale));
   els.themeSelect().addEventListener("change", () => setTheme(els.themeSelect().value as ThemeMode));
   els.startupToggle().addEventListener("change", async () => {
@@ -1215,6 +1291,7 @@ async function main() {
       if (target.closest("#more-menu")) return;
       if (target.closest("#view-menu")) return;
       if (target.closest("#settings-modal")) return;
+      if (target.closest("#about-modal")) return;
       clearSelection();
     }
   });
@@ -1224,6 +1301,7 @@ async function main() {
       hideContextMenu();
       closeAllDropdowns(null);
       closeSettings();
+      closeAbout();
     }
   });
 

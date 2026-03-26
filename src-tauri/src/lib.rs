@@ -517,11 +517,27 @@ fn get_autostart_enabled() -> Result<bool, String> {
 
 #[tauri::command]
 fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    // In `tauri dev`, the binary loads the UI from `devUrl` (localhost). If we register that debug
+    // executable for autostart, Windows will launch it on boot when no dev server is running,
+    // causing a "localhost refused to connect" blank window.
+    if enabled && cfg!(debug_assertions) {
+        return Err("Autostart is disabled for dev/debug builds. Please enable it from the installed release build (tauri build), or disable autostart and re-enable after installation.".to_string());
+    }
     let exe = std::env::current_exe().map_err(|e| format!("resolve current exe failed: {e}"))?;
     let exe_str = exe.to_string_lossy();
     // Always quote paths since they may contain spaces.
     let cmd = format!("\"{}\"", exe_str);
     autostart::set_enabled(AUTOSTART_VALUE_NAME, enabled, &cmd)
+}
+
+#[tauri::command]
+fn set_window_always_on_top(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    win.set_always_on_top(enabled)
+        .map_err(|e| format!("set always on top failed: {e}"))?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -539,7 +555,8 @@ pub fn run() {
             open_program_location,
             remove_program,
             get_autostart_enabled,
-            set_autostart_enabled
+            set_autostart_enabled,
+            set_window_always_on_top
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

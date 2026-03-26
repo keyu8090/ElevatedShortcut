@@ -23,17 +23,25 @@
             <div class="toolbar-group toolbar-group-view" aria-label="View">
               <button class="top-dd-btn" id="btn-view" type="button" aria-haspopup="menu" aria-expanded="false">
                 <span class="top-dd-text" id="view-label">View</span>
-                <span class="top-dd-caret" aria-hidden="true">⌵</span>
+                <span class="top-dd-caret" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M4 6.5L8 10.2L12 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
               </button>
               <button class="top-dd-btn" id="btn-sort" type="button" aria-haspopup="menu" aria-expanded="false">
                 <span class="top-dd-text" id="sort-label">Sort</span>
-                <span class="top-dd-caret" aria-hidden="true">⌵</span>
+                <span class="top-dd-caret" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M4 6.5L8 10.2L12 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
               </button>
             </div>
           </div>
 
           <div class="toolbar-right">
-            <button class="icon-btn" id="btn-more" type="button" aria-label="More" aria-haspopup="menu" aria-expanded="false">⋯</button>
+            <button class="icon-btn" id="btn-more" type="button" aria-label="More" aria-haspopup="menu" aria-expanded="false">&#x22EF;</button>
           </div>
         </div>
       </header>
@@ -64,7 +72,10 @@
       </div>
 
       <div class="menu hidden" id="more-menu" role="menu" aria-hidden="true">
+        <button class="menu-item" id="more-pin" type="button" role="menuitem">Always on top</button>
+        <div class="ctx-sep"></div>
         <button class="menu-item" id="more-settings" type="button" role="menuitem">Settings</button>
+        <button class="menu-item" id="more-about" type="button" role="menuitem">About</button>
       </div>
 
       <div class="ctx hidden" id="context-menu" role="menu" aria-hidden="true">
@@ -106,6 +117,51 @@
               <span class="setting-label" id="settings-startup-label">Run at startup</span>
               <input class="setting-switch" id="startup-toggle" type="checkbox" role="switch" />
             </label>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal hidden" id="about-modal" aria-hidden="true">
+        <div class="modal-backdrop" id="about-backdrop"></div>
+        <section class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="about-title">
+          <div class="modal-head">
+            <div>
+              <div class="modal-title" id="about-title">关于 SkipUAC</div>
+              <div class="modal-subtitle" id="about-subtitle">一个用于更便捷地启动“你信任的”高权限程序的工具。</div>
+            </div>
+            <button class="modal-close" id="btn-about-close" type="button" aria-label="Close">×</button>
+          </div>
+
+          <div class="about-body">
+            <div class="about-left">
+              <img class="about-logo" src="/icons/skipuac.png" alt="SkipUAC logo" />
+            </div>
+            <div class="about-right">
+              <div class="about-section-title">工作原理</div>
+              <div class="about-text">
+                SkipUAC 不会关闭 UAC，也不会修改系统安全策略。它会为你选择的程序创建一个“以最高权限运行”的计划任务，
+                并在桌面生成一个 (elevated) 快捷方式。双击该快捷方式时，SkipUAC 会触发对应的计划任务运行，从而减少频繁弹出 UAC 的打断。
+              </div>
+
+              <div class="about-section-title">风险与隐患</div>
+              <div class="about-text">
+                UAC（用户帐户控制）是 Windows 的核心安全防线：当程序尝试修改系统设置、安装软件或访问敏感目录时，系统会弹出确认对话框，询问你是否授权。
+                它的意义在于：防止木马/病毒在后台静默提权并获取最高权限。
+                <br />
+                <br />
+                因此，不建议将 UAC 设置为“从不通知”（等同于彻底关闭）。这会带来显著风险：
+                <ul class="about-list">
+                  <li>失去知情权：恶意软件可能在你完全不知情的情况下修改系统核心设置。</li>
+                  <li>权限滥用：所有程序（甚至浏览器中的恶意脚本）更容易获得管理员能力，系统更易被勒索或破坏。</li>
+                  <li>系统不稳定：部分系统组件依赖 UAC 环境，彻底关闭可能导致微软商店（Store）或系统应用异常。</li>
+                </ul>
+                SkipUAC 的目标是减少“对可信程序反复确认”的打断，而不是替代或关闭 UAC。建议保持系统 UAC 开启，仅对你完全信任的软件使用。
+              </div>
+
+              <div class="about-footer">
+                <button class="link-btn" id="about-uac-link" type="button">了解更多关于安全启动的知识</button>
+              </div>
+            </div>
           </div>
         </section>
       </div>

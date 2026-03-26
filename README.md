@@ -1,7 +1,59 @@
-# Tauri + Vanilla TS
+# SkipUAC
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Typescript.
+一个极简的 Windows 小工具：为你信任的程序创建 **(elevated)** 桌面快捷方式，减少反复弹出的 UAC 确认。
 
-## Recommended IDE Setup
+English: see `README.en.md`.
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## 工作原理（概要）
+
+- SkipUAC **不会关闭 UAC**，也不会修改系统安全策略。
+- 你拖入 `.lnk` 或 `.exe` 后，SkipUAC 会记录目标路径与参数。
+- 点击“创建”后，SkipUAC 会为该程序创建一个“以最高权限运行”的 **Windows 计划任务**，并生成一个桌面 **(elevated)** 快捷方式。
+- 双击这个 **(elevated)** 快捷方式会触发对应计划任务启动目标程序，从而减少每次都弹出 UAC 的打断。
+
+## 使用方法（最简单流程）
+
+1. 将桌面/开始菜单中的快捷方式（`.lnk`）或可执行文件（`.exe`）拖入窗口，或点击“添加”选择文件。
+2. 在列表中选中一个或多个条目，点击“创建”生成桌面 **(elevated)** 快捷方式。
+3. 之后双击桌面生成的 **(elevated)** 快捷方式即可启动。
+4. 删除：右键条目选择“删除”（或在条目选中后执行删除操作），会同时移除桌面快捷方式与对应计划任务。
+
+## 安全提示（请务必阅读）
+
+- **不要**为了省事把 UAC 设置为“从不通知”（等同于关闭 UAC）。这会显著削弱系统的权限边界。
+- 仅对你 **完全信任** 的软件使用；不要把来源不明的程序加入列表。
+- “免提示高权限启动”天然存在被滥用风险：如果目标程序/目录被替换或注入，可能导致高权限执行恶意代码。
+
+## 开发与构建
+
+### 前置
+
+- Windows 10/11
+- Node.js（建议使用较新的 LTS）
+- Rust + Cargo（Tauri 依赖）
+
+### 开发
+
+```bash
+npm install
+npm run tauri dev
+```
+
+### 构建
+
+```bash
+npm run tauri build
+```
+
+## 许可
+
+本项目采用 MIT License，见 `LICENSE`。
+
+## 免责声明
+
+- 本项目按“现状”提供，不提供任何明示或暗示担保；使用风险由你自行承担。
+- 本项目可能创建/删除计划任务与桌面快捷方式；请在理解其工作原理与风险后使用。
+
+## 联系方式
+
+- Email: `snoe8090@gmail.com`
