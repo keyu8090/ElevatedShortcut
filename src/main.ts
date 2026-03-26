@@ -5,6 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 type ViewMode = "large" | "small" | "list" | "details";
 type ThemeMode = "light" | "dark";
 type Locale = "zh-CN" | "en";
+type SortRule = "manual" | "name" | "added" | "created";
+type SortDir = "asc" | "desc";
 
 type ProgramEntry = {
   id: string;
@@ -138,6 +140,13 @@ const els = {
   viewLabel: () => document.querySelector<HTMLElement>("#view-label")!,
   viewMenu: () => document.querySelector<HTMLElement>("#view-menu")!,
   viewMenuItems: () => Array.from(document.querySelectorAll<HTMLButtonElement>("#view-menu .menu-item[data-view]")),
+  sortBtn: () => document.querySelector<HTMLButtonElement>("#btn-sort")!,
+  sortLabel: () => document.querySelector<HTMLElement>("#sort-label")!,
+  sortMenu: () => document.querySelector<HTMLElement>("#sort-menu")!,
+  sortRuleItems: () =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>("#sort-menu .menu-item[data-sort-rule]")),
+  sortDirItems: () =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>("#sort-menu .menu-item[data-sort-dir]")),
   moreBtn: () => document.querySelector<HTMLButtonElement>("#btn-more")!,
   moreMenu: () => document.querySelector<HTMLElement>("#more-menu")!,
   moreSettings: () => document.querySelector<HTMLButtonElement>("#more-settings")!,
@@ -165,10 +174,42 @@ let programs: ProgramEntry[] = [];
 let viewMode: ViewMode = "large";
 let themeMode: ThemeMode = "dark";
 let locale: Locale = "zh-CN";
+let sortRule: SortRule = "manual";
+let sortDir: SortDir = "asc";
 let ctxProgramId: string | null = null;
 let selectedIds = new Set<string>();
 let primaryAction: "install" | "delete" = "install";
 let autostartEnabled: boolean | null = null;
+let dragProgramId: string | null = null;
+let suppressNextItemClick = false;
+let dragOverlayEl: HTMLElement | null = null;
+
+function ensureDragOverlay(p: ProgramEntry) {
+  if (!dragOverlayEl) {
+    dragOverlayEl = document.createElement("div");
+    dragOverlayEl.className = "drag-overlay";
+    document.body.appendChild(dragOverlayEl);
+  }
+  dragOverlayEl.innerHTML = `
+    <img class="drag-overlay-icon" alt="" />
+    <div class="drag-overlay-text"></div>
+  `;
+  dragOverlayEl.querySelector<HTMLImageElement>(".drag-overlay-icon")!.src = programIconSrc(p);
+  dragOverlayEl.querySelector<HTMLElement>(".drag-overlay-text")!.textContent = p.name;
+}
+
+function updateDragOverlayPos(clientX: number, clientY: number) {
+  if (!dragOverlayEl) return;
+  const x = Math.min(window.innerWidth - 24, clientX + 14);
+  const y = Math.min(window.innerHeight - 24, clientY + 16);
+  dragOverlayEl.style.left = `${x}px`;
+  dragOverlayEl.style.top = `${y}px`;
+}
+
+function removeDragOverlay() {
+  dragOverlayEl?.remove();
+  dragOverlayEl = null;
+}
 
 function t(key: TranslationKey) {
   return translations[locale][key];
@@ -201,6 +242,17 @@ function getSavedViewMode(): ViewMode {
   const raw = localStorage.getItem("viewMode");
   if (raw === "large" || raw === "small" || raw === "list" || raw === "details") return raw;
   return "large";
+}
+
+function getSavedSortRule(): SortRule {
+  const raw = localStorage.getItem("sortRule");
+  if (raw === "manual" || raw === "name" || raw === "added" || raw === "created") return raw;
+  return "manual";
+}
+
+function getSavedSortDir(): SortDir {
+  const raw = localStorage.getItem("sortDir");
+  return raw === "desc" ? "desc" : "asc";
 }
 
 function getSavedTheme(): ThemeMode {
@@ -247,6 +299,32 @@ function applyLocaleText() {
     if (view === "details") item.textContent = t("details");
   }
   updateViewLabel();
+
+  // Sort menu labels (use escapes for zh to avoid encoding issues).
+  const ruleTexts: Record<SortRule, string> =
+    locale === "zh-CN"
+      ? {
+          manual: "\u624b\u52a8",
+          name: "\u540d\u79f0",
+          added: "\u6dfb\u52a0\u65f6\u95f4",
+          created: "\u5df2\u521b\u5efa",
+        }
+      : { manual: "Manual", name: "Name", added: "Added", created: "Created" };
+  for (const item of els.sortRuleItems()) {
+    const r = item.dataset.sortRule as SortRule;
+    item.textContent = ruleTexts[r];
+  }
+
+  const dirTexts: Record<SortDir, string> =
+    locale === "zh-CN"
+      ? { asc: "\u9012\u589e", desc: "\u9012\u51cf" }
+      : { asc: "Asc", desc: "Desc" };
+  for (const item of els.sortDirItems()) {
+    const d = item.dataset.sortDir as SortDir;
+    item.textContent = dirTexts[d];
+  }
+
+  updateSortLabel();
   updateStatusText();
 }
 
@@ -284,11 +362,75 @@ function updateViewLabel() {
   }
 }
 
+function updateSortLabel() {
+  const arrow = sortDir === "asc" ? "↑" : "↓";
+  const label =
+    locale === "zh-CN"
+      ? sortRule === "manual"
+        ? "\u624b\u52a8"
+        : sortRule === "name"
+          ? `\u540d\u79f0${arrow}`
+          : sortRule === "added"
+            ? `\u6dfb\u52a0${arrow}`
+            : `\u521b\u5efa${arrow}`
+      : sortRule === "manual"
+        ? "Manual"
+        : sortRule === "name"
+          ? `Name ${arrow}`
+          : sortRule === "added"
+            ? `Added ${arrow}`
+            : `Created ${arrow}`;
+  els.sortLabel().textContent = label;
+
+  for (const item of els.sortRuleItems()) {
+    item.classList.toggle("active", item.dataset.sortRule === sortRule);
+  }
+  for (const item of els.sortDirItems()) {
+    item.classList.toggle("active", item.dataset.sortDir === sortDir);
+    item.toggleAttribute("disabled", sortRule === "manual");
+  }
+}
+
+function hideSortMenu() {
+  const menu = els.sortMenu();
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
+  els.sortBtn().setAttribute("aria-expanded", "false");
+}
+
+function showSortMenu() {
+  const menu = els.sortMenu();
+  menu.classList.remove("hidden");
+  menu.setAttribute("aria-hidden", "false");
+  els.sortBtn().setAttribute("aria-expanded", "true");
+  showMenuUnderButton(menu, els.sortBtn());
+}
+
+function setSortRule(next: SortRule) {
+  sortRule = next;
+  localStorage.setItem("sortRule", next);
+  updateSortLabel();
+  render();
+}
+
+function setSortDir(next: SortDir) {
+  sortDir = next;
+  localStorage.setItem("sortDir", next);
+  updateSortLabel();
+  render();
+}
+
 function hideViewMenu() {
   const menu = els.viewMenu();
   menu.classList.add("hidden");
   menu.setAttribute("aria-hidden", "true");
   els.viewBtn().setAttribute("aria-expanded", "false");
+}
+
+function closeAllDropdowns(except: "view" | "sort" | "more" | null = null) {
+  if (except !== "view") hideViewMenu();
+  if (except !== "sort") hideSortMenu();
+  if (except !== "more") hideMoreMenu();
 }
 
 function showMenuUnderButton(menu: HTMLElement, btn: HTMLElement) {
@@ -309,6 +451,37 @@ function showViewMenu() {
   menu.setAttribute("aria-hidden", "false");
   els.viewBtn().setAttribute("aria-expanded", "true");
   showMenuUnderButton(menu, els.viewBtn());
+}
+
+function sortedPrograms(): ProgramEntry[] {
+  const list = programs.slice();
+  if (sortRule === "name") {
+    list.sort((a, b) => a.name.localeCompare(b.name, locale, { sensitivity: "base" }));
+    if (sortDir === "desc") list.reverse();
+    return list;
+  }
+  if (sortRule === "added") {
+    list.sort((a, b) => a.createdAtUnixMs - b.createdAtUnixMs);
+    if (sortDir === "desc") list.reverse();
+    return list;
+  }
+  if (sortRule === "created") {
+    // installed=true means desktop shortcut is created.
+    list.sort((a, b) => Number(a.installed) - Number(b.installed) || a.name.localeCompare(b.name, locale, { sensitivity: "base" }));
+    if (sortDir === "desc") list.reverse();
+    return list;
+  }
+  return list;
+}
+
+async function persistManualOrder() {
+  const ids = programs.map((p) => p.id);
+  try {
+    await invoke("reorder_programs", { ids });
+  } catch (e) {
+    const msg = typeof e === "string" ? e : (e as { toString?: () => string })?.toString?.() ?? "unknown error";
+    toast(locale === "zh-CN" ? "\u4fdd\u5b58\u6392\u5217\u5931\u8d25" : "Save order failed", msg, "error");
+  }
 }
 
 function hideMoreMenu() {
@@ -469,6 +642,10 @@ function updateSelectionDom() {
 
 function wireItemInteractions(el: HTMLElement, programId: string) {
   el.addEventListener("click", (e) => {
+    if (suppressNextItemClick) {
+      suppressNextItemClick = false;
+      return;
+    }
     const multi = (e as MouseEvent).ctrlKey || (e as MouseEvent).metaKey;
     if (multi) toggleSelection(programId);
     else setSelectionOnly(programId);
@@ -486,6 +663,117 @@ function wireItemInteractions(el: HTMLElement, programId: string) {
     e.stopPropagation();
     showContextMenu(e.clientX, e.clientY, programId);
   });
+
+  // Manual drag-to-reorder (pointer-based; more reliable than HTML5 drag in WebView2).
+  // Only enabled when sortRule is manual and not in details view.
+  el.draggable = false;
+  if (sortRule !== "manual" || viewMode === "details") return;
+
+  let active = false;
+  let pointerId: number | null = null;
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+  let dropTargetId: string | null = null;
+  let dropPos: "before" | "after" = "after";
+
+  const clearDropMarks = () => {
+    for (const n of Array.from(els.content().querySelectorAll<HTMLElement>(".item[data-drop]"))) {
+      n.removeAttribute("data-drop");
+    }
+  };
+
+  el.addEventListener("pointerdown", (e) => {
+    if ((e as PointerEvent).button !== 0) return;
+    // Avoid starting reorder when using Ctrl/Meta multi-select; keep selection behavior.
+    if ((e as PointerEvent).ctrlKey || (e as PointerEvent).metaKey) return;
+    active = true;
+    pointerId = (e as PointerEvent).pointerId;
+    startX = (e as PointerEvent).clientX;
+    startY = (e as PointerEvent).clientY;
+    dragging = false;
+    dropTargetId = null;
+    dropPos = "after";
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(pointerId);
+    } catch {
+      // ignore
+    }
+  });
+
+  el.addEventListener("pointermove", (e) => {
+    if (!active || pointerId !== (e as PointerEvent).pointerId) return;
+    const dx = Math.abs((e as PointerEvent).clientX - startX);
+    const dy = Math.abs((e as PointerEvent).clientY - startY);
+    if (!dragging) {
+      if (dx + dy < 6) return;
+      dragging = true;
+      dragProgramId = programId;
+      el.classList.add("dragging");
+      suppressNextItemClick = true;
+      const p = programs.find((x) => x.id === programId);
+      if (p) ensureDragOverlay(p);
+    }
+
+    updateDragOverlayPos((e as PointerEvent).clientX, (e as PointerEvent).clientY);
+
+    const hit = document.elementFromPoint((e as PointerEvent).clientX, (e as PointerEvent).clientY) as HTMLElement | null;
+    const item = hit?.closest?.(".item") as HTMLElement | null;
+    if (!item) {
+      clearDropMarks();
+      dropTargetId = null;
+      return;
+    }
+    const id = item.dataset.id || null;
+    if (!id || id === programId) {
+      item?.removeAttribute("data-drop");
+      dropTargetId = null;
+      return;
+    }
+    const rect = item.getBoundingClientRect();
+    // Make insertion position easier to hit by using large edge bands, with a small "dead zone"
+    // in the middle that keeps the previous position.
+    const y = (e as PointerEvent).clientY;
+    const band = Math.min(28, Math.max(10, rect.height * 0.45));
+    if (y <= rect.top + band) dropPos = "before";
+    else if (y >= rect.bottom - band) dropPos = "after";
+    dropTargetId = id;
+    clearDropMarks();
+    item.setAttribute("data-drop", dropPos);
+    (e as PointerEvent).preventDefault();
+  });
+
+  const finish = async (e: PointerEvent) => {
+    if (!active || pointerId !== e.pointerId) return;
+    active = false;
+    pointerId = null;
+
+    if (dragging) {
+      clearDropMarks();
+      el.classList.remove("dragging");
+      removeDragOverlay();
+      const src = dragProgramId;
+      dragProgramId = null;
+      if (src && dropTargetId) {
+        const ids = programs.map((p) => p.id);
+        const fromIdx = ids.indexOf(src);
+        const toIdx = ids.indexOf(dropTargetId);
+        if (fromIdx >= 0 && toIdx >= 0) {
+          ids.splice(fromIdx, 1);
+          const idxNow = ids.indexOf(dropTargetId);
+          const insertAt = dropPos === "before" ? idxNow : idxNow + 1;
+          ids.splice(Math.max(0, insertAt), 0, src);
+          const map = new Map(programs.map((p) => [p.id, p] as const));
+          programs = ids.map((id) => map.get(id)!).filter(Boolean);
+          await persistManualOrder();
+          render();
+        }
+      }
+    }
+  };
+
+  el.addEventListener("pointerup", (e) => void finish(e as PointerEvent));
+  el.addEventListener("pointercancel", (e) => void finish(e as PointerEvent));
 }
 
 function render() {
@@ -499,6 +787,8 @@ function render() {
     return;
   }
 
+  const viewList = sortedPrograms();
+
   if (viewMode === "details") {
     const table = document.createElement("table");
     table.className = "details";
@@ -509,7 +799,7 @@ function render() {
       <tbody></tbody>
     `;
     const tbody = table.querySelector("tbody")!;
-    for (const p of programs) {
+    for (const p of viewList) {
       const tr = document.createElement("tr");
       tr.dataset.id = p.id;
       if (selectedIds.has(p.id)) tr.classList.add("selected");
@@ -539,14 +829,14 @@ function render() {
   else if (viewMode === "small") list.className = "grid grid-small";
   else list.className = "grid grid-rows";
 
-  for (const p of programs) {
+  for (const p of viewList) {
     const item = document.createElement("div");
     item.className = "item";
     if (selectedIds.has(p.id)) item.classList.add("selected");
     item.classList.add(p.installed ? "installed" : "draft");
     item.dataset.id = p.id;
     item.innerHTML = `
-      <img class="item-icon" src="${programIconSrc(p)}" alt="" />
+      <img class="item-icon" src="${programIconSrc(p)}" alt="" draggable="false" />
       <div class="item-text"></div>
     `;
     item.querySelector<HTMLElement>(".item-text")!.textContent = p.installed ? p.name : `${p.name} (draft)`;
@@ -643,11 +933,14 @@ async function main() {
   locale = getSavedLocale();
   themeMode = getSavedTheme();
   viewMode = getSavedViewMode();
+  sortRule = getSavedSortRule();
+  sortDir = getSavedSortDir();
 
   setTheme(themeMode);
   els.languageSelect().value = locale;
   applyLocaleText();
   setViewMode(viewMode);
+  updateSortLabel();
   await refreshPrograms();
 
   let suppressNextBlankClick = false;
@@ -808,7 +1101,10 @@ async function main() {
   els.viewBtn().addEventListener("click", (e) => {
     e.stopPropagation();
     const menu = els.viewMenu();
-    if (menu.classList.contains("hidden")) showViewMenu();
+    if (menu.classList.contains("hidden")) {
+      closeAllDropdowns("view");
+      showViewMenu();
+    }
     else hideViewMenu();
   });
   for (const item of els.viewMenuItems()) {
@@ -816,6 +1112,30 @@ async function main() {
       const view = item.dataset.view as ViewMode;
       hideViewMenu();
       setViewMode(view);
+    });
+  }
+
+  els.sortBtn().addEventListener("click", (e) => {
+    e.stopPropagation();
+    const menu = els.sortMenu();
+    if (menu.classList.contains("hidden")) {
+      closeAllDropdowns("sort");
+      showSortMenu();
+    } else hideSortMenu();
+  });
+  for (const item of els.sortRuleItems()) {
+    item.addEventListener("click", () => {
+      const next = item.dataset.sortRule as SortRule;
+      hideSortMenu();
+      setSortRule(next);
+    });
+  }
+  for (const item of els.sortDirItems()) {
+    item.addEventListener("click", () => {
+      if (sortRule === "manual") return;
+      const next = item.dataset.sortDir as SortDir;
+      hideSortMenu();
+      setSortDir(next);
     });
   }
 
@@ -828,7 +1148,10 @@ async function main() {
   els.moreBtn().addEventListener("click", (e) => {
     e.stopPropagation();
     const menu = els.moreMenu();
-    if (menu.classList.contains("hidden")) showMoreMenu();
+    if (menu.classList.contains("hidden")) {
+      closeAllDropdowns("more");
+      showMoreMenu();
+    }
     else hideMoreMenu();
   });
   els.moreSettings().addEventListener("click", () => {
@@ -876,6 +1199,10 @@ async function main() {
     if (!view.classList.contains("hidden") && !view.contains(e.target as Node) && !els.viewBtn().contains(e.target as Node)) {
       hideViewMenu();
     }
+    const sort = els.sortMenu();
+    if (!sort.classList.contains("hidden") && !sort.contains(e.target as Node) && !els.sortBtn().contains(e.target as Node)) {
+      hideSortMenu();
+    }
 
     // Clicking outside the content area should also clear selection, otherwise the statusbar can
     // keep showing "selected" even when the user thinks nothing is selected.
@@ -895,8 +1222,7 @@ async function main() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       hideContextMenu();
-      hideMoreMenu();
-      hideViewMenu();
+      closeAllDropdowns(null);
       closeSettings();
     }
   });

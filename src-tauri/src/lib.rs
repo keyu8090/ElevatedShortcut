@@ -92,8 +92,32 @@ fn get_programs(app: tauri::AppHandle) -> Result<Vec<ProgramEntry>, String> {
     for p in &mut programs {
         p.icon_data_url = icon_data_url(&p.icon_path);
     }
-    programs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(programs)
+}
+
+#[tauri::command]
+fn reorder_programs(app: tauri::AppHandle, ids: Vec<String>) -> Result<(), String> {
+    let paths = storage::resolve_paths(&app)?;
+    storage::ensure_dirs(&paths)?;
+
+    let programs = storage::load_programs(&paths)?;
+    let mut by_id: std::collections::HashMap<String, ProgramEntry> =
+        programs.into_iter().map(|p| (p.id.clone(), p)).collect();
+
+    let mut out: Vec<ProgramEntry> = Vec::with_capacity(by_id.len());
+    for id in &ids {
+        if let Some(p) = by_id.remove(id) {
+            out.push(p);
+        }
+    }
+
+    // Append any remaining entries (unknown ids or older items) to keep data intact.
+    for (_, p) in by_id {
+        out.push(p);
+    }
+
+    storage::save_programs(&paths, &out)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -339,18 +363,33 @@ fn install_programs(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, St
         )
     })?;
 
-    // Prefer running the persistent installer scheduled task (no UAC). If it doesn't exist yet,
-    // fall back to a one-shot elevated process which will also create the installer task.
-    if tasks::run_task(elevate::INSTALLER_TASK_NAME).is_err() {
-        elevate::run_elevated_install(&pending_path)?;
-    }
+    // Prefer running the persistent installer scheduled task (no UAC). If it doesn't exist or is broken
+    // (e.g., still points to an older exe path), fall back to a one-shot elevated process which will also
+    // recreate the installer task.
+    let ran_task_ok = tasks::run_task(elevate::INSTALLER_TASK_NAME).is_ok();
 
-    // Wait briefly for the elevated installer to finish (it deletes the pending file on success).
+    // Wait briefly for the installer to finish (it deletes the pending file on success).
     for _ in 0..50 {
         if !pending_path.exists() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // If the task "started" but didn't process the pending file (common when its action exe is missing),
+    // fall back to an explicit elevation path.
+    if pending_path.exists() {
+        // If the task did exist, this will likely trigger UAC once and repair the scheduled task to the
+        // current executable path.
+        elevate::run_elevated_install(&pending_path)?;
+        for _ in 0..50 {
+            if !pending_path.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    } else if !ran_task_ok {
+        // Task didn't run and pending is already gone (unexpected), but keep behavior consistent.
     }
 
     let programs = storage::load_programs(&paths)?;
@@ -384,13 +423,31 @@ fn open_program_location(app: tauri::AppHandle, id: String) -> Result<(), String
         .find(|p| p.id == id)
         .ok_or_else(|| "program not found".to_string())?;
 
-    let status = std::process::Command::new("explorer.exe")
-        .arg(format!("/select,\"{}\"", p.target_path))
-        .status()
+    let target = std::path::PathBuf::from(p.target_path.trim_matches('"'));
+
+    // Prefer opening the target exe's parent folder (what users typically want).
+    // Fall back to the desktop shortcut folder if the exe is missing.
+    let folder = if target.exists() {
+        target
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "target has no parent directory".to_string())?
+    } else if let Some(shortcut) = &p.desktop_shortcut_path {
+        let shortcut_path = std::path::PathBuf::from(shortcut.trim_matches('"'));
+        shortcut_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "shortcut has no parent directory".to_string())?
+    } else {
+        return Err("path does not exist".to_string());
+    };
+
+    // Use spawn() to avoid propagating Explorer's non-zero exit codes (it may still open successfully).
+    std::process::Command::new("explorer.exe")
+        .arg(folder)
+        .spawn()
         .map_err(|e| format!("launch explorer failed: {e}"))?;
-    if !status.success() {
-        return Err(format!("explorer exited with code: {status}"));
-    }
+
     Ok(())
 }
 
@@ -429,9 +486,7 @@ fn remove_program(app: tauri::AppHandle, id: String) -> Result<(), String> {
         )
     })?;
 
-    if tasks::run_task(elevate::CLEANER_TASK_NAME).is_err() {
-        elevate::run_elevated_cleanup(&pending_path)?;
-    }
+    let _ran_task_ok = tasks::run_task(elevate::CLEANER_TASK_NAME).is_ok();
 
     // Wait briefly for cleanup to finish (it deletes the pending file on success).
     for _ in 0..50 {
@@ -439,6 +494,17 @@ fn remove_program(app: tauri::AppHandle, id: String) -> Result<(), String> {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // Same "task exists but broken" fallback as install.
+    if pending_path.exists() {
+        elevate::run_elevated_cleanup(&pending_path)?;
+        for _ in 0..50 {
+            if !pending_path.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 
     Ok(())
@@ -465,6 +531,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_programs,
+            reorder_programs,
             add_program_draft_from_path,
             add_program_from_path,
             install_programs,

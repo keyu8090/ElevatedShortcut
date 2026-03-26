@@ -25,6 +25,10 @@
                 <span class="top-dd-text" id="view-label">View</span>
                 <span class="top-dd-caret" aria-hidden="true">⌵</span>
               </button>
+              <button class="top-dd-btn" id="btn-sort" type="button" aria-haspopup="menu" aria-expanded="false">
+                <span class="top-dd-text" id="sort-label">Sort</span>
+                <span class="top-dd-caret" aria-hidden="true">⌵</span>
+              </button>
             </div>
           </div>
 
@@ -47,6 +51,16 @@
         <button class="menu-item" data-view="small" type="button" role="menuitem">Small</button>
         <button class="menu-item" data-view="list" type="button" role="menuitem">List</button>
         <button class="menu-item" data-view="details" type="button" role="menuitem">Details</button>
+      </div>
+
+      <div class="menu hidden" id="sort-menu" role="menu" aria-hidden="true">
+        <button class="menu-item" data-sort-rule="manual" type="button" role="menuitem">Manual</button>
+        <button class="menu-item" data-sort-rule="name" type="button" role="menuitem">Name</button>
+        <button class="menu-item" data-sort-rule="added" type="button" role="menuitem">Added</button>
+        <button class="menu-item" data-sort-rule="created" type="button" role="menuitem">Created</button>
+        <div class="ctx-sep"></div>
+        <button class="menu-item" data-sort-dir="asc" type="button" role="menuitem">Asc</button>
+        <button class="menu-item" data-sort-dir="desc" type="button" role="menuitem">Desc</button>
       </div>
 
       <div class="menu hidden" id="more-menu" role="menu" aria-hidden="true">

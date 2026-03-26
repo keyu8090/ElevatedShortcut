@@ -78,7 +78,7 @@ body {
 }
 
 .toolbar-left {
-  gap: 10px;
+  gap: 6px;
   flex: 1 1 auto;
 }
 
@@ -87,7 +87,7 @@ body {
 }
 
 .toolbar-gap {
-  width: 8px;
+  width: 4px;
 }
 
 .toolbar-group {
@@ -212,7 +212,10 @@ body {
 .toolbar-group .top-btn + .top-btn,
 .toolbar-group .seg-btn + .seg-btn,
 .toolbar-group .top-btn + .seg-btn,
-.toolbar-group .seg-btn + .top-btn {
+.toolbar-group .seg-btn + .top-btn,
+.toolbar-group .top-dd-btn + .top-dd-btn,
+.toolbar-group .top-btn + .top-dd-btn,
+.toolbar-group .top-dd-btn + .top-btn {
   border-left: 1px solid var(--border);
 }
 
@@ -415,6 +418,7 @@ html[data-view="list"] .item {
   height: 20px;
   border-radius: 6px;
   flex: 0 0 auto;
+  -webkit-user-drag: none;
 }
 
 html[data-view="large"] .item-icon {
@@ -489,12 +493,17 @@ html[data-view="small"] .item-text {
   border-bottom: 0;
 }
 
-.details tbody tr:hover td {
+.details tbody tr:hover {
   background: var(--hover);
 }
 
-.details tbody tr.selected td {
+.details tbody tr.selected {
   background: var(--accent-soft);
+}
+
+.details tbody tr:hover td,
+.details tbody tr.selected td {
+  background: transparent;
 }
 
 .d-name {
@@ -781,4 +790,54 @@ html[data-view="small"] .item-text {
   .seg-btn {
     min-width: 30px;
   }
+}
+.item.dragging {
+  opacity: 0.6;
+}
+
+.item[data-drop] {
+  outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--accent-soft) 65%, transparent);
+}
+
+.item[data-drop="before"] {
+  box-shadow: inset 0 3px 0 0 color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
+.item[data-drop="after"] {
+  box-shadow: inset 0 -3px 0 0 color-mix(in srgb, var(--accent) 85%, transparent);
+}
+
+.drag-overlay {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translate(0, 0);
+  z-index: 140;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  max-width: min(320px, calc(100vw - 24px));
+}
+
+.drag-overlay-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
+.drag-overlay-text {
+  font-weight: 620;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
